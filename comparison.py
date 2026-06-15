@@ -8,15 +8,15 @@ import tarfile
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import accuracy_score
 import warnings
-warnings.filterwarnings('ignore')
 
 # ============================================
 # ⚙️ ВСЕ НАСТРОЙКИ
 # ============================================
 
 # --- Вывод ---
+DISPLAY_WARNINGS = False       # Выводить предупрежления Python? Не рекомендуется включать, если вы не программист
 WRITE_TO_FILE = False                # Писать в консоль или в файл? Если True — в файл
-FILE_PATH = ".\results_01.txt"      # Путь к файлу, куда писать
+FILE_PATH = "./results_01.txt"      # Путь к файлу, куда писать
 ADD_MODE = False                        # Перезаписывать содержимое файла или добавлять? Если True — добавлять
 # Если WRITE_TO_FILE установлена в False, FILE_PATH и ADD_MODE ничего не делают
 
@@ -39,13 +39,15 @@ LOG_EVERY = 10                           # Просчёт и вывод инфо
 COMPARE_WITH_SWISH = True  # Сравнивать со Swish? Если False — только LLA
 
 # --- Рандом ---
-DETERMINATION = True               # Сид рандома фиксирован? Если False — не фиксирован
+DETERMINATION = True               # Сид рандома фиксирован? Если False — нет
 RANDOM_SEED = 42                     # Сид рандома
 # Если DETERMINATION установлена в False, RANDOM_SEED ничего не делает
 
 # --- Инициализация ---
-α = 0                                                # Первый коэффициент инициализации (init = √(β / pred + α)), α
-β = 0.875                                         # Второй коэффициент инициализации (init = √(β / pred + α)), β, для LLA 0.875 очень неплохо
+α = 0                                                # Первый коэффициент инициализации (init = √(α + β / pred) + γ), α
+β = 0.875                                         # Второй коэффициент инициализации (init = √(α + β / pred) + γ), β, для LLA хорошо 0.875
+γ = 0                                                # Третий коэффициент инициализации (init = √(α + β / pred) + γ), γ
+
 # ============================================
 # ✨ ФУНКЦИИ АКТИВАЦИИ
 # ============================================
@@ -66,6 +68,9 @@ def swish_derivative(x):
 # ============================================
 # 📖 ПОДГОТОВКА ДАННЫХ
 # ============================================
+
+if not DISPLAY_WARNINGS:
+    warnings.filterwarnings('ignore')
 
 if WRITE_TO_FILE:
     sys.stdout = open(FILE_PATH, "a" if ADD_MODE else "w")
@@ -126,12 +131,12 @@ class FlexibleNN:
         
         prev = input_size
         for i, h in enumerate(hidden_sizes):
-            W = np.random.randn(prev, h) * np.sqrt(α + β / prev)
+            W = np.random.randn(prev, h) * (np.sqrt(α + β / prev) + γ)
             b = np.zeros((1, h))
             self.layers.append({'W': W, 'b': b})
             prev = h
         
-        self.W_out = np.random.randn(prev, output_size) * np.sqrt(α + β / prev)
+        self.W_out = np.random.randn(prev, output_size) * (np.sqrt(α + β / prev) + γ)
         self.b_out = np.zeros((1, output_size))
     
     def forward(self, X):
@@ -216,14 +221,28 @@ def train_model(activation_func, activation_deriv, name):
             print(f"Epoch {epoch:5d}/{EPOCHS} | Test Acc: {acc:.4f}")
     
     elapsed = time.time() - start
-    print(f"✅ Лучшая точность: {best_acc:.4f} | Время: {elapsed:.2f} секунд ({elapsed/60:.2f} минут)")
+    print(f"✅ Лучшая точность: {best_acc:.4f} | Время: {elapsed:.2f} секунд ({elapsed/60:.2f} минут(ы))")
     return best_acc
 
 # ============================================
 # ✅ СТАРТ
 # ============================================
 
+def russian(a, b, c, count):
+    remainder = count % 100
+    if remainder < 10 or remainder > 20:
+        if remainder % 10 == 1:
+            return a
+        if remainder % 10 in {2, 3, 4}:
+            return b
+        else:
+            return c
+    else:
+        return c 
+
 def format_architecture(SIZES):
+    if not SIZES:
+        return "без скрытых слоёв"
     text = ""
     last_size = 0
     mul = 1
@@ -232,18 +251,18 @@ def format_architecture(SIZES):
             mul += 1
         else:
             if last_size != 0:
-                text += f"{mul} слоёв по {last_size} нейронов" if mul > 1 else f"{last_size}"
+                text += f"{mul} сло{russian('й', 'я', 'ёв', mul)} по {last_size} нейрон{russian('', 'а', 'ов', last_size)}"
                 text += " → "
             mul = 1
             last_size = size
-    text += f"{mul} слоёв по {last_size} нейронов" if mul > 1 else f"{last_size}"
+    text += f"{mul} сло{russian('й', 'я', 'ёв', mul)} по {last_size} нейрон{russian('', 'а', 'ов', last_size)}"
     return text
 
 print("\n" + "="*105)
-print(f"КОНФИГУРАЦИЯ: {TRAIN_SIZE} трейн, {TEST_SIZE} тест, {BATCH_COUNT} батч{'' if BATCH_COUNT == 1 else 'ей' if BATCH_COUNT == 5 else 'а'} CIFAR-10")
-print(f"Архитектура: {format_architecture(HIDDEN_SIZES)}")
-print(f"ЭПОХИ: {EPOCHS}, LR: {LEARNING_RATE}, BATCH: {BATCH_SIZE}")
-print(f"ИНИЦИАЛИЗАЦИЯ: √({β} / prev{'' if α == 0 else f' + {α}'})")
+print(f"КОНФИГУРАЦИЯ: {TRAIN_SIZE} трейн, {TEST_SIZE} тест, {BATCH_COUNT} батч{russian('', 'а', 'ей', BATCH_COUNT)} CIFAR-10")
+print(f"СКРЫТЫЕ СЛОИ: {format_architecture(HIDDEN_SIZES)}")
+print(f"{EPOCHS} ЭПОХ{russian('а', 'и', '', EPOCHS)}, LR: {LEARNING_RATE}, РАЗМЕР БАТЧЕЙ: {BATCH_SIZE}")
+print(f"ИНИЦИАЛИЗАЦИЯ: √({β} / prev{'' if α == 0 else f' + {α}' if α > 0 else f' - {-α}'}){'' if γ == 0 else f' + {γ}' if γ > 0 else f' - {-γ}'}")
 print("="*105)
 
 acc_lla = train_model(lla, lla_derivative, "LLA")
@@ -253,8 +272,8 @@ if COMPARE_WITH_SWISH:
     print("\n" + "="*105)
     print("ИТОГ:")
     print(f"• LLA:           {acc_lla:.4f} ({acc_lla*100:.2f}%)")
-    print(f"• Swish:        {acc_swish:.4f} ({acc_swish*100:.2f}%)")
-    print(f"• Разница:   {acc_lla - acc_swish:+.4f} ({(acc_lla - acc_swish) * 100:+.2f}%)")
+    print(f"• Swish:         {acc_swish:.4f} ({acc_swish*100:.2f}%)")
+    print(f"• Разница:      {acc_lla - acc_swish:+.4f} ({(acc_lla - acc_swish) * 100:+.2f}%)")
     if acc_lla > acc_swish:
         print(f"🎉 LLA лучше swish в {acc_lla / acc_swish:.3f} раз(а)!")
     elif acc_lla == acc_swish:
